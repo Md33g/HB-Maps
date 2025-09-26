@@ -1,1 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Map — Google Maps‑like (Leaflet + OSM)</title>
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-sA+e2rG8gqkQb3p8q6Gf2YqFq2KkFv9gqgG1A6u9g3g=" crossorigin="" />
+
+  <style>
+    /* Basic page reset */
+    html,body{height:100%;margin:0;font-family:Inter, Roboto, Arial, sans-serif}
+    #map{height:100%;width:100%;position:relative}
+
+    /* Google Maps-like UI container */
+    .gm-topbar{position:absolute;left:12px;right:12px;top:12px;z-index:1000;display:flex;gap:8px;align-items:center}
+
+    .search-box{
+      display:flex;align-items:center;background:rgba(255,255,255,0.95);border-radius:8px;padding:8px 10px;box-shadow:0 1px 6px rgba(0,0,0,0.2);min-width:320px}
+    .search-box input{border:0;outline:0;font-size:15px;padding:6px 8px;width:420px}
+    .search-box button{background:#1a73e8;color:white;border:0;padding:7px 10px;border-radius:6px;cursor:pointer;font-weight:600}
+
+    .controls{display:flex;gap:8px}
+    .btn{background:rgba(255,255,255,0.95);padding:8px;border-radius:8px;box-shadow:0 1px 6px rgba(0,0,0,0.15);cursor:pointer;font-weight:600}
+
+    /* Search suggestion list */
+    .suggestions{position:absolute;top:56px;left:12px;z-index:1200;max-width:540px}
+    .suggestions ul{list-style:none;margin:0;padding:6px;background:white;border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.12)}
+    .suggestions li{padding:8px;border-bottom:1px solid #eee;cursor:pointer}
+    .suggestions li:last-child{border-bottom:0}
+    .suggestions li:hover{background:#f5f7fb}
+
+    /* Bottom-right controls (zoom etc.) */
+    .leaflet-control{box-shadow:none}
+
+    /* Info panel */
+    .info-panel{position:absolute;right:12px;bottom:12px;z-index:1100;padding:10px 12px;background:rgba(255,255,255,0.95);border-radius:8px;min-width:200px;box-shadow:0 4px 20px rgba(0,0,0,0.12)}
+    .info-panel h4{margin:0 0 6px 0;font-size:14px}
+    .small{font-size:13px;color:#333}
+
+    /* Attribution styles to mimic modern look */
+    .leaflet-control-attribution{background:transparent;border:0}
+
+    @media (max-width:540px){
+      .search-box input{width:160px}
+      .suggestions{left:8px;right:8px}
+      .gm-topbar{left:8px;right:8px;top:8px}
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <div class="gm-topbar">
+    <div style="position:relative">
+      <div class="search-box">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" style="margin-right:6px;opacity:.7"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79L20 20.49 21.49 19 15.5 14zM10 14a4 4 0 110-8 4 4 0 010 8z"/></svg>
+        <input id="searchInput" placeholder="Search places or addresses" aria-label="Search">
+        <button id="searchBtn">Search</button>
+      </div>
+      <div class="suggestions" id="suggestions" style="display:none"></div>
+    </div>
+
+    <div class="controls">
+      <div class="btn" id="locBtn" title="Center to your location">My location</div>
+      <div class="btn" id="styleBtn" title="Toggle map style">Toggle style</div>
+    </div>
+  </div>
+
+  <div class="info-panel" id="infoPanel">
+    <h4>Place details</h4>
+    <div id="placeDetails" class="small">Click on the map or search for a place.</div>
+  </div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-o9N1j8k0g3f1jR4r2v6T0i2x3Gf6bZb1u6r9g6vF2Zk=" crossorigin=""></script>
+
+  <script>
+    // Initialize map
+    const map = L.map('map', {zoomControl:true}).setView([30.0444,31.2357], 13); // default to Cairo
+
+    // Two tile layers (light and dark-ish) to toggle between
+    const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    const toner = L.tileLayer('https://stamen-tiles.a.ssl.fastly.net/toner/{z}/{x}/{y}.png', {
+      maxZoom: 20,
+      attribution: 'Map tiles by Stamen Design, under CC BY 3.0 — Map data © OpenStreetMap'
+    });
+
+    let currentBase = 'osm';
+
+    // Marker that shows searched/selected location
+    let mainMarker = L.marker([30.0444,31.2357], {draggable:true}).addTo(map);
+
+    function updateInfo(text){document.getElementById('placeDetails').innerText = text}
+
+    // Reverse geocode using Nominatim (OpenStreetMap) when clicking map or moving marker
+    async function reverseGeocode(lat,lng){
+      try{
+        updateInfo('Loading place details...')
+        const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        const name = data.display_name || 'Unknown location';
+        updateInfo(name);
+      }catch(e){updateInfo('Could not get place details')}
+    }
+
+    map.on('click', e => {
+      const {lat,lng} = e.latlng;
+      mainMarker.setLatLng([lat,lng]);
+      reverseGeocode(lat,lng);
+    });
+
+    mainMarker.on('dragend', e=>{
+      const {lat,lng} = e.target.getLatLng();
+      map.panTo([lat,lng]);
+      reverseGeocode(lat,lng);
+    });
+
+    // Search (forward geocoding) using Nominatim
+    async function searchPlace(query){
+      const q = encodeURIComponent(query);
+      const url = `https://nominatim.openstreetmap.org/search?q=${q}&format=jsonv2&limit=6`;
+      const res = await fetch(url);
+      const results = await res.json();
+      return results; // array
+    }
+
+    const searchInput = document.getElementById('searchInput');
+    const searchBtn = document.getElementById('searchBtn');
+    const suggestionsBox = document.getElementById('suggestions');
+
+    let suggestionTimer = null;
+    searchInput.addEventListener('input', async (e)=>{
+      const val = e.target.value.trim();
+      if(!val){suggestionsBox.style.display='none'; return}
+      // debounce
+      if(suggestionTimer) clearTimeout(suggestionTimer);
+      suggestionTimer = setTimeout(async ()=>{
+        try{
+          const res = await searchPlace(val);
+          if(res && res.length){
+            suggestionsBox.innerHTML = '<ul>' + res.map(r=>`<li data-lat="${r.lat}" data-lon="${r.lon}">${r.display_name}</li>`).join('') + '</ul>';
+            suggestionsBox.style.display = 'block';
+            // attach click handlers
+            suggestionsBox.querySelectorAll('li').forEach(li=>{
+              li.addEventListener('click', ()=>{
+                const lat = li.getAttribute('data-lat');
+                const lon = li.getAttribute('data-lon');
+                mainMarker.setLatLng([lat,lon]);
+                map.setView([lat,lon], 16);
+                suggestionsBox.style.display='none';
+                searchInput.value = li.innerText;
+                reverseGeocode(lat,lon);
+              })
+            })
+          } else {suggestionsBox.style.display='none'}
+        }catch(err){suggestionsBox.style.display='none'}
+      },300)
+    })
+
+    searchBtn.addEventListener('click', async ()=>{
+      const q = searchInput.value.trim();
+      if(!q) return;
+      const res = await searchPlace(q);
+      if(res && res.length){
+        const r = res[0];
+        mainMarker.setLatLng([r.lat,r.lon]);
+        map.setView([r.lat,r.lon], 16);
+        reverseGeocode(r.lat,r.lon);
+      } else {
+        updateInfo('No results found')
+      }
+    });
+
+    // My location
+    document.getElementById('locBtn').addEventListener('click', ()=>{
+      if(!navigator.geolocation){alert('Geolocation not supported') ; return}
+      navigator.geolocation.getCurrentPosition(pos=>{
+        const lat = pos.coords.latitude; const lon = pos.coords.longitude;
+        mainMarker.setLatLng([lat,lon]);
+        map.setView([lat,lon], 15);
+        reverseGeocode(lat,lon);
+      }, err=>{alert('Could not get location: '+err.message)})
+    })
+
+    // Toggle base map style
+    document.getElementById('styleBtn').addEventListener('click', ()=>{
+      if(currentBase === 'osm'){
+        map.removeLayer(osm); toner.addTo(map); currentBase='toner'
+      } else { map.removeLayer(toner); osm.addTo(map); currentBase='osm'}
+    })
+
+    // Keyboard: Enter triggers search
+    searchInput.addEventListener('keydown', (e)=>{ if(e.key === 'Enter'){ e.preventDefault(); searchBtn.click(); } })
+
+    // Initial reverse geocode for default marker
+    reverseGeocode(30.0444,31.2357);
+
+    // small helper: show lat/lng on move
+    const infoPanel = document.getElementById('infoPanel');
+    map.on('move', ()=>{
+      const c = map.getCenter();
+      // update info panel subtly with coords when not showing a place name
+      // (we keep place details replaced by reverse geocode when available)
+      // no action here, but left for extension
+    });
+
+    // Accessibility: focus search
+    searchInput.setAttribute('aria-label','Search map');
+
+    // Prevent excessive attribution box default
+    map.attributionControl.setPrefix(false);
+
+  </script>
+</body>
+</html>
 
