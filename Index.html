@@ -3,220 +3,295 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Map — Google Maps‑like (Leaflet + OSM)</title>
+  <title>Expert Map — Advanced Leaflet Map (No API keys)</title>
 
   <!-- Leaflet CSS -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-sA+e2rG8gqkQb3p8q6Gf2YqFq2KkFv9gqgG1A6u9g3g=" crossorigin="" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <!-- Leaflet Draw -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" crossorigin="" />
+  <!-- MarkerCluster -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" crossorigin="" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" crossorigin="" />
 
   <style>
-    /* Basic page reset */
-    html,body{height:100%;margin:0;font-family:Inter, Roboto, Arial, sans-serif}
-    #map{height:100%;width:100%;position:relative}
+    :root{--accent:#1a73e8;--bg: #ffffff}
+    html,body,#map{height:100%;margin:0;padding:0;font-family:Inter, Roboto, Arial, sans-serif}
+    #map{position:relative}
 
-    /* Google Maps-like UI container */
-    .gm-topbar{position:absolute;left:12px;right:12px;top:12px;z-index:1000;display:flex;gap:8px;align-items:center}
-
-    .search-box{
-      display:flex;align-items:center;background:rgba(255,255,255,0.95);border-radius:8px;padding:8px 10px;box-shadow:0 1px 6px rgba(0,0,0,0.2);min-width:320px}
+    /* Top search bar */
+    .topbar{position:absolute;left:12px;right:12px;top:12px;z-index:1001;display:flex;gap:8px;align-items:center}
+    .search-box{display:flex;align-items:center;background:rgba(255,255,255,0.98);border-radius:10px;padding:8px 10px;box-shadow:0 6px 20px rgba(0,0,0,0.12);min-width:320px}
     .search-box input{border:0;outline:0;font-size:15px;padding:6px 8px;width:420px}
-    .search-box button{background:#1a73e8;color:white;border:0;padding:7px 10px;border-radius:6px;cursor:pointer;font-weight:600}
+    .search-box button{background:var(--accent);color:white;border:0;padding:8px 12px;border-radius:8px;cursor:pointer;font-weight:600}
 
     .controls{display:flex;gap:8px}
-    .btn{background:rgba(255,255,255,0.95);padding:8px;border-radius:8px;box-shadow:0 1px 6px rgba(0,0,0,0.15);cursor:pointer;font-weight:600}
+    .ctrl-btn{background:rgba(255,255,255,0.96);padding:8px;border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,0.08);cursor:pointer;font-weight:600}
 
-    /* Search suggestion list */
     .suggestions{position:absolute;top:56px;left:12px;z-index:1200;max-width:540px}
-    .suggestions ul{list-style:none;margin:0;padding:6px;background:white;border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.12)}
-    .suggestions li{padding:8px;border-bottom:1px solid #eee;cursor:pointer}
-    .suggestions li:last-child{border-bottom:0}
+    .suggestions ul{list-style:none;margin:0;padding:6px;background:white;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.12);max-height:320px;overflow:auto}
+    .suggestions li{padding:8px;border-bottom:1px solid #f0f0f0;cursor:pointer}
     .suggestions li:hover{background:#f5f7fb}
 
-    /* Bottom-right controls (zoom etc.) */
-    .leaflet-control{box-shadow:none}
-
-    /* Info panel */
-    .info-panel{position:absolute;right:12px;bottom:12px;z-index:1100;padding:10px 12px;background:rgba(255,255,255,0.95);border-radius:8px;min-width:200px;box-shadow:0 4px 20px rgba(0,0,0,0.12)}
-    .info-panel h4{margin:0 0 6px 0;font-size:14px}
+    /* Right panel */
+    .panel{position:absolute;right:12px;top:12px;z-index:1001;width:320px;background:rgba(255,255,255,0.98);border-radius:10px;padding:10px;box-shadow:0 6px 20px rgba(0,0,0,0.12);max-height:70vh;overflow:auto}
+    .panel h4{margin:2px 0 8px 0}
     .small{font-size:13px;color:#333}
 
-    /* Attribution styles to mimic modern look */
-    .leaflet-control-attribution{background:transparent;border:0}
+    /* Mobile tweaks */
+    @media (max-width:720px){.search-box input{width:160px}.panel{display:none}}
 
-    @media (max-width:540px){
-      .search-box input{width:160px}
-      .suggestions{left:8px;right:8px}
-      .gm-topbar{left:8px;right:8px;top:8px}
-    }
+    /* Attribution tweaks */
+    .leaflet-control-attribution{background:transparent}
   </style>
 </head>
 <body>
   <div id="map"></div>
 
-  <div class="gm-topbar">
+  <div class="topbar">
     <div style="position:relative">
       <div class="search-box">
         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" style="margin-right:6px;opacity:.7"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79L20 20.49 21.49 19 15.5 14zM10 14a4 4 0 110-8 4 4 0 010 8z"/></svg>
-        <input id="searchInput" placeholder="Search places or addresses" aria-label="Search">
+        <input id="searchInput" placeholder="Search places, addresses or coordinates (lat,lng)" aria-label="Search">
         <button id="searchBtn">Search</button>
       </div>
       <div class="suggestions" id="suggestions" style="display:none"></div>
     </div>
 
     <div class="controls">
-      <div class="btn" id="locBtn" title="Center to your location">My location</div>
-      <div class="btn" id="styleBtn" title="Toggle map style">Toggle style</div>
+      <div class="ctrl-btn" id="locBtn" title="Center to your location">My location</div>
+      <div class="ctrl-btn" id="measureBtn" title="Measure distance/area">Measure</div>
+      <div class="ctrl-btn" id="toggleBtn" title="Toggle base map">Toggle style</div>
     </div>
   </div>
 
-  <div class="info-panel" id="infoPanel">
-    <h4>Place details</h4>
-    <div id="placeDetails" class="small">Click on the map or search for a place.</div>
+  <div class="panel" id="panel">
+    <h4>Map tools & details</h4>
+    <div id="info" class="small">Click the map to drop marker. Use search to find a place. Create shapes with the draw tool. Use routing to get directions.</div>
+    <hr />
+    <div>
+      <strong>Route builder</strong>
+      <p class="small">Click two or more points while holding <em>Shift</em> to add waypoints for routing, or click the "Route" button.</p>
+      <button id="routeBtn" class="ctrl-btn" style="margin-top:6px">Build route</button>
+      <button id="clearRouteBtn" class="ctrl-btn" style="margin-top:6px">Clear route</button>
+    </div>
+    <hr />
+    <div>
+      <strong>Legend</strong>
+      <ul class="small">
+        <li>Blue marker: chosen place</li>
+        <li>Red markers: route waypoints</li>
+        <li>Green shapes: drawn polygons / areas</li>
+      </ul>
+    </div>
   </div>
 
-  <!-- Leaflet JS -->
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-o9N1j8k0g3f1jR4r2v6T0i2x3Gf6bZb1u6r9g6vF2Zk=" crossorigin=""></script>
+  <!-- Leaflet JS & plugins -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js" crossorigin=""></script>
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js" crossorigin=""></script>
 
   <script>
+    // Configuration
+    const DEFAULT_CENTER = [30.0444, 31.2357]; // Cairo default
+    const geocodeBase = 'https://geocode.maps.co'; // free geocoding with CORS-friendly endpoints
+    const osrmBase = 'https://router.project-osrm.org'; // OSRM public router for routing
+
     // Initialize map
-    const map = L.map('map', {zoomControl:true}).setView([30.0444,31.2357], 13); // default to Cairo
+    const map = L.map('map', {zoomControl:true}).setView(DEFAULT_CENTER, 13);
 
-    // Two tile layers (light and dark-ish) to toggle between
-    const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '© OpenStreetMap contributors'
-    }).addTo(map);
+    // Base layers
+    const tilesVoyager = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {maxZoom: 19, attribution: '&copy; OpenStreetMap contributors &copy; CARTO'}).addTo(map);
+    const tilesToner = L.tileLayer('https://stamen-tiles.a.ssl.fastly.net/toner/{z}/{x}/{y}.png', {maxZoom: 20, attribution:'Map tiles by Stamen Design'});
+    let currentBase = 'voyager';
 
-    const toner = L.tileLayer('https://stamen-tiles.a.ssl.fastly.net/toner/{z}/{x}/{y}.png', {
-      maxZoom: 20,
-      attribution: 'Map tiles by Stamen Design, under CC BY 3.0 — Map data © OpenStreetMap'
-    });
+    // Marker cluster for many markers
+    const markerLayer = L.markerClusterGroup();
+    map.addLayer(markerLayer);
 
-    let currentBase = 'osm';
+    // Main marker (single chosen place)
+    const mainIcon = L.icon({iconUrl:'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png', iconSize:[25,41], iconAnchor:[12,41]});
+    const mainMarker = L.marker(DEFAULT_CENTER, {icon: mainIcon, draggable:true}).addTo(map);
 
-    // Marker that shows searched/selected location
-    let mainMarker = L.marker([30.0444,31.2357], {draggable:true}).addTo(map);
+    // Route layer
+    let routeLayer = L.geoJSON(null, {style:{color:'#1a73e8',weight:5}}).addTo(map);
+    let routeWaypoints = [];
+    let waypointMarkers = L.layerGroup().addTo(map);
 
-    function updateInfo(text){document.getElementById('placeDetails').innerText = text}
+    // Draw control
+    const drawnItems = new L.FeatureGroup(); map.addLayer(drawnItems);
+    const drawControl = new L.Control.Draw({edit:{featureGroup:drawnItems}}); map.addControl(drawControl);
 
-    // Reverse geocode using Nominatim (OpenStreetMap) when clicking map or moving marker
+    // Helper to update info panel
+    function setInfo(html){ document.getElementById('info').innerHTML = html }
+
+    // Reverse geocode
     async function reverseGeocode(lat,lng){
       try{
-        updateInfo('Loading place details...')
-        const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`;
+        setInfo('Loading place details...');
+        const url = `${geocodeBase}/reverse?lat=${lat}&lon=${lng}`;
         const res = await fetch(url);
         const data = await res.json();
         const name = data.display_name || 'Unknown location';
-        updateInfo(name);
-      }catch(e){updateInfo('Could not get place details')}
+        setInfo(`<strong>${name}</strong><br/>Lat: ${lat.toFixed(6)}, Lng: ${lng.toFixed(6)}`);
+      }catch(e){ setInfo('Reverse geocode failed') }
     }
 
-    map.on('click', e => {
-      const {lat,lng} = e.latlng;
-      mainMarker.setLatLng([lat,lng]);
-      reverseGeocode(lat,lng);
-    });
-
-    mainMarker.on('dragend', e=>{
-      const {lat,lng} = e.target.getLatLng();
-      map.panTo([lat,lng]);
-      reverseGeocode(lat,lng);
-    });
-
-    // Search (forward geocoding) using Nominatim
-    async function searchPlace(query){
-      const q = encodeURIComponent(query);
-      const url = `https://nominatim.openstreetmap.org/search?q=${q}&format=jsonv2&limit=6`;
+    // Forward geocode (search)
+    async function searchPlace(q){
+      const encoded = encodeURIComponent(q);
+      const url = `${geocodeBase}/search?q=${encoded}&limit=8`;
       const res = await fetch(url);
-      const results = await res.json();
-      return results; // array
+      const data = await res.json();
+      return data; // array
     }
 
+    // Autocomplete / suggestions
     const searchInput = document.getElementById('searchInput');
-    const searchBtn = document.getElementById('searchBtn');
     const suggestionsBox = document.getElementById('suggestions');
+    let suggestTimer = null;
 
-    let suggestionTimer = null;
-    searchInput.addEventListener('input', async (e)=>{
-      const val = e.target.value.trim();
-      if(!val){suggestionsBox.style.display='none'; return}
-      // debounce
-      if(suggestionTimer) clearTimeout(suggestionTimer);
-      suggestionTimer = setTimeout(async ()=>{
+    searchInput.addEventListener('input', ()=>{
+      const val = searchInput.value.trim();
+      if(!val){ suggestionsBox.style.display='none'; return }
+      if(suggestTimer) clearTimeout(suggestTimer);
+      suggestTimer = setTimeout(async ()=>{
+        // support coords as direct input
+        const coordMatch = val.match(/^\s*([+-]?\d+(?:\.\d+)?)\s*,\s*([+-]?\d+(?:\.\d+)?)\s*$/);
+        if(coordMatch){
+          const lat = parseFloat(coordMatch[1]); const lng = parseFloat(coordMatch[2]);
+          suggestionsBox.innerHTML = `<ul><li data-lat="${lat}" data-lon="${lng}">Coordinates: ${lat}, ${lng}</li></ul>`;
+          suggestionsBox.style.display='block';
+          attachSuggestionHandlers();
+          return;
+        }
         try{
           const res = await searchPlace(val);
           if(res && res.length){
-            suggestionsBox.innerHTML = '<ul>' + res.map(r=>`<li data-lat="${r.lat}" data-lon="${r.lon}">${r.display_name}</li>`).join('') + '</ul>';
-            suggestionsBox.style.display = 'block';
-            // attach click handlers
-            suggestionsBox.querySelectorAll('li').forEach(li=>{
-              li.addEventListener('click', ()=>{
-                const lat = li.getAttribute('data-lat');
-                const lon = li.getAttribute('data-lon');
-                mainMarker.setLatLng([lat,lon]);
-                map.setView([lat,lon], 16);
-                suggestionsBox.style.display='none';
-                searchInput.value = li.innerText;
-                reverseGeocode(lat,lon);
-              })
-            })
-          } else {suggestionsBox.style.display='none'}
-        }catch(err){suggestionsBox.style.display='none'}
-      },300)
-    })
-
-    searchBtn.addEventListener('click', async ()=>{
-      const q = searchInput.value.trim();
-      if(!q) return;
-      const res = await searchPlace(q);
-      if(res && res.length){
-        const r = res[0];
-        mainMarker.setLatLng([r.lat,r.lon]);
-        map.setView([r.lat,r.lon], 16);
-        reverseGeocode(r.lat,r.lon);
-      } else {
-        updateInfo('No results found')
-      }
+            suggestionsBox.innerHTML = '<ul>' + res.map(r => `<li data-lat="${r.lat}" data-lon="${r.lon}">${r.display_name}</li>`).join('') + '</ul>';
+            suggestionsBox.style.display='block';
+            attachSuggestionHandlers();
+          } else { suggestionsBox.style.display='none' }
+        }catch(err){ suggestionsBox.style.display='none' }
+      }, 250)
     });
+
+    function attachSuggestionHandlers(){
+      suggestionsBox.querySelectorAll('li').forEach(li=>{
+        li.addEventListener('click', ()=>{
+          const lat = parseFloat(li.getAttribute('data-lat'));
+          const lon = parseFloat(li.getAttribute('data-lon'));
+          mainMarker.setLatLng([lat,lon]);
+          map.setView([lat,lon], 16);
+          searchInput.value = li.innerText;
+          suggestionsBox.style.display='none';
+          reverseGeocode(lat,lon);
+        })
+      })
+    }
+
+    document.getElementById('searchBtn').addEventListener('click', async ()=>{
+      const q = searchInput.value.trim(); if(!q) return;
+      // if coords, jump directly
+      const coordMatch = q.match(/^\s*([+-]?\d+(?:\.\d+)?)\s*,\s*([+-]?\d+(?:\.\d+)?)\s*$/);
+      if(coordMatch){
+        const lat = parseFloat(coordMatch[1]); const lng = parseFloat(coordMatch[2]);
+        mainMarker.setLatLng([lat,lng]); map.setView([lat,lng], 15); reverseGeocode(lat,lng); return;
+      }
+      try{
+        const res = await searchPlace(q);
+        if(res && res.length){ const r = res[0]; mainMarker.setLatLng([r.lat,r.lon]); map.setView([r.lat,r.lon], 16); reverseGeocode(r.lat,r.lon); }
+        else setInfo('No results found');
+      }catch(e){ setInfo('Search failed') }
+    });
+
+    // Map click: move main marker and reverse geocode; also add waypoint if Shift held
+    map.on('click', e=>{
+      const {lat,lng} = e.latlng;
+      if(window.event && window.event.shiftKey){ // add waypoint
+        addWaypoint(lat,lng);
+        return;
+      }
+      mainMarker.setLatLng([lat,lng]); reverseGeocode(lat,lng);
+    });
+
+    mainMarker.on('dragend', e=>{ const p = e.target.getLatLng(); map.panTo(p); reverseGeocode(p.lat,p.lng); });
 
     // My location
     document.getElementById('locBtn').addEventListener('click', ()=>{
-      if(!navigator.geolocation){alert('Geolocation not supported') ; return}
+      if(!navigator.geolocation){ alert('Geolocation not supported'); return }
       navigator.geolocation.getCurrentPosition(pos=>{
-        const lat = pos.coords.latitude; const lon = pos.coords.longitude;
-        mainMarker.setLatLng([lat,lon]);
-        map.setView([lat,lon], 15);
-        reverseGeocode(lat,lon);
-      }, err=>{alert('Could not get location: '+err.message)})
-    })
-
-    // Toggle base map style
-    document.getElementById('styleBtn').addEventListener('click', ()=>{
-      if(currentBase === 'osm'){
-        map.removeLayer(osm); toner.addTo(map); currentBase='toner'
-      } else { map.removeLayer(toner); osm.addTo(map); currentBase='osm'}
-    })
-
-    // Keyboard: Enter triggers search
-    searchInput.addEventListener('keydown', (e)=>{ if(e.key === 'Enter'){ e.preventDefault(); searchBtn.click(); } })
-
-    // Initial reverse geocode for default marker
-    reverseGeocode(30.0444,31.2357);
-
-    // small helper: show lat/lng on move
-    const infoPanel = document.getElementById('infoPanel');
-    map.on('move', ()=>{
-      const c = map.getCenter();
-      // update info panel subtly with coords when not showing a place name
-      // (we keep place details replaced by reverse geocode when available)
-      // no action here, but left for extension
+        const lat = pos.coords.latitude, lon = pos.coords.longitude;
+        mainMarker.setLatLng([lat,lon]); map.setView([lat,lon], 15); reverseGeocode(lat,lon);
+      }, err=>{ alert('Could not get location: '+err.message) })
     });
 
-    // Accessibility: focus search
+    // Toggle base map style
+    document.getElementById('toggleBtn').addEventListener('click', ()=>{
+      if(currentBase === 'voyager'){ map.removeLayer(tilesVoyager); tilesToner.addTo(map); currentBase='toner' } else { map.removeLayer(tilesToner); tilesVoyager.addTo(map); currentBase='voyager' }
+    });
+
+    // Draw created shapes
+    map.on(L.Draw.Event.CREATED, function (event) {
+      const layer = event.layer; drawnItems.addLayer(layer); setInfo('Shape created. Use edit tool to modify.');
+    });
+
+    // Measure tool: uses Draw to make a polyline for distance or polygon for area
+    let measuring = false;
+    document.getElementById('measureBtn').addEventListener('click', ()=>{
+      measuring = !measuring;
+      if(measuring){ setInfo('Measuring mode: draw a polyline or polygon. Click Measure again to stop.'); } else { setInfo('Measuring stopped.'); }
+    });
+
+    // When a shape is drawn, if measuring mode is on, compute measurement
+    map.on(L.Draw.Event.CREATED, function (e) {
+      const layer = e.layer; drawnItems.addLayer(layer);
+      if(measuring){
+        if(layer instanceof L.Polygon){ const area = L.GeometryUtil.geodesicArea(layer.getLatLngs()[0]); setInfo(`Area: ${ (area/1000000).toFixed(3) } km²`); }
+        else if(layer instanceof L.Polyline){ const len = 0; // fallback, compute length below
+          const latlngs = layer.getLatLngs(); let total=0; for(let i=1;i<latlngs.length;i++){ total += latlngs[i-1].distanceTo(latlngs[i]); } setInfo(`Distance: ${(total/1000).toFixed(3)} km`);
+        }
+      }
+    });
+
+    // Route: add waypoint and marker
+    function addWaypoint(lat,lng){ routeWaypoints.push([lat,lng]); const m = L.marker([lat,lng], {icon:L.divIcon({className:'wp-icon',html:'<div style="background:#d9534f;border-radius:50%;width:14px;height:14px;border:3px solid white"></div>' ,iconSize:[20,20]})}); m.addTo(waypointMarkers); setInfo(`Waypoint added. Total: ${routeWaypoints.length}`); }
+
+    document.getElementById('routeBtn').addEventListener('click', async ()=>{
+      if(routeWaypoints.length < 2){ alert('Add at least two waypoints (Shift+click)'); return }
+      try{
+        await buildRoute(routeWaypoints);
+      }catch(e){ alert('Routing failed') }
+    });
+
+    document.getElementById('clearRouteBtn').addEventListener('click', ()=>{ routeWaypoints = []; waypointMarkers.clearLayers(); routeLayer.clearLayers(); setInfo('Route cleared'); });
+
+    async function buildRoute(points){
+      // OSRM expects lon,lat; build coords string
+      const coords = points.map(p => `${p[1]},${p[0]}`).join(';');
+      const url = `${osrmBase}/route/v1/driving/${coords}?overview=full&geometries=geojson&steps=true&annotations=true`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if(!data.routes || !data.routes.length) throw new Error('no routes');
+      const route = data.routes[0];
+      routeLayer.clearLayers(); routeLayer.addData(route.geometry);
+      map.fitBounds(routeLayer.getBounds(), {padding:[40,40]});
+      // show summary
+      const distKm = (route.distance/1000).toFixed(2); const durMin = (route.duration/60).toFixed(1);
+      setInfo(`<strong>Route</strong><br/>Distance: ${distKm} km • Duration: ${durMin} min<br/>Waypoints: ${points.length}`);
+    }
+
+    // Allow double-click on map to add marker for marker cluster demonstration
+    map.on('dblclick', e=>{
+      const m = L.marker(e.latlng); markerLayer.addLayer(m);
+    });
+
+    // Initial reverse geocode
+    reverseGeocode(DEFAULT_CENTER[0], DEFAULT_CENTER[1]);
+
+    // Accessibility
     searchInput.setAttribute('aria-label','Search map');
 
-    // Prevent excessive attribution box default
-    map.attributionControl.setPrefix(false);
-
+    // NOTE: Many free services have rate limits. If you see errors in the console about CORS or rate-limiting, consider switching to a paid plan or adding a server-side proxy.
   </script>
 </body>
 </html>
